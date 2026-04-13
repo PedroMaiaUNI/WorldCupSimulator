@@ -1,5 +1,10 @@
 import { useState, useEffect, createContext, useContext } from "react";
-import { getTeams, getMatches, getRealResults, getPredictorSessions, upsertPredictorSession, upsertPredictions } from "./lib/supabase";
+import {
+  getTeams, getMatches, getRealResults, getPredictorSessions,
+  upsertPredictorSession, upsertPredictions, getAllPredictions,
+  deleteSession as sbDeleteSession, deletePredictionsForSession,
+  upsertRealResults, deleteAllRealResults
+} from "./lib/supabase";
 import { DEFAULT_TEAMS, GROUPS } from "./lib/teamsData";
 import { generateGroupMatches } from "./lib/scoring";
 import HomePage from "./pages/HomePage";
@@ -14,111 +19,58 @@ export const useApp = () => useContext(AppContext);
 
 const ADMIN_SECRET = import.meta.env.VITE_ADMIN_SECRET || "copa2026admin";
 
-// ── LocalStorage helpers ──────────────────────────────────────
-const LS_SESSIONS  = "wc2026_sessions";
-const LS_PREDS     = "wc2026_preds";
-const LS_RESULTS   = "wc2026_results";
-const LS_TEAMS     = "wc2026_teams";
-
-function lsGet(key, fallback = null) {
-  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; }
-}
-function lsSet(key, val) {
-  try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
-}
-
 export default function App() {
-  const [page, setPage] = useState("home");
+  const [page,          setPage]          = useState("home");
   const [predictorName, setPredictorName] = useState("");
-  const [sessionId, setSessionId] = useState(null);
-  const [teams, setTeamsState] = useState([]);
-  const [matches, setMatches] = useState([]);
-  const [realResults, setRealResultsState] = useState({});
-  const [predictions, setPredictions] = useState([]);
-  const [sessions, setSessionsState] = useState([]);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [useFallback, setUseFallback] = useState(false);
-
-  // Wrappers that always sync to localStorage
-  function setTeams(val) {
-    const next = typeof val === "function" ? val(teams) : val;
-    setTeamsState(next);
-    lsSet(LS_TEAMS, next);
-  }
-  function setRealResults(val) {
-    const next = typeof val === "function" ? val(realResults) : val;
-    setRealResultsState(next);
-    lsSet(LS_RESULTS, next);
-  }
-  function setSessions(val) {
-    const next = typeof val === "function" ? val(sessions) : val;
-    setSessionsState(next);
-    lsSet(LS_SESSIONS, next);
-  }
+  const [sessionId,     setSessionId]     = useState(null);
+  const [teams,         setTeams]         = useState([]);
+  const [matches,       setMatches]       = useState([]);
+  const [realResults,   setRealResults]   = useState({});  // { matchId: resultObj }
+  const [sessions,      setSessions]      = useState([]);  // predictor_sessions rows
+  const [isAdmin,       setIsAdmin]       = useState(false);
+  const [loading,       setLoading]       = useState(true);
 
   useEffect(() => { initApp(); }, []);
 
   async function initApp() {
     setLoading(true);
-
-    // Always start from localStorage (instant, no network)
-    const lsTeams    = lsGet(LS_TEAMS);
-    const lsResults  = lsGet(LS_RESULTS, {});
-    const lsSessions = lsGet(LS_SESSIONS, []);
-
-    if (lsTeams && lsTeams.length > 0) {
-      const normalized = lsTeams.map(t => ({ ...t, group: t.group || t.group_letter }))
-        .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
-      setTeamsState(normalized);
-      setMatches(generateAllGroupMatches(normalized));
-    } else {
-      setTeamsState(DEFAULT_TEAMS);
-      setMatches(generateAllGroupMatches(DEFAULT_TEAMS));
-    }
-    setRealResultsState(lsResults);
-    setSessionsState(lsSessions);
-
-    // Then try to sync with Supabase (non-blocking)
     try {
       const [teamsData, matchesData, resultsData, sessionsData] = await Promise.all([
-        getTeams(), getMatches(), getRealResults(), getPredictorSessions(),
+        getTeams(),
+        getMatches(),
+        getRealResults(),
+        getPredictorSessions(),
       ]);
 
+      // Teams
       if (teamsData && teamsData.length > 0) {
         const normalized = teamsData
           .map(t => ({ ...t, group: t.group || t.group_letter }))
           .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
-        setTeamsState(normalized);
-        lsSet(LS_TEAMS, normalized);
+        setTeams(normalized);
         if (matchesData && matchesData.length > 0) {
           setMatches(matchesData);
         } else {
           setMatches(generateAllGroupMatches(normalized));
         }
+      } else {
+        setTeams(DEFAULT_TEAMS);
+        setMatches(generateAllGroupMatches(DEFAULT_TEAMS));
       }
 
-      // Merge Supabase results WITH localStorage results (localStorage wins for KO results not in Supabase matches table)
-      const supabaseResults = {};
-      (resultsData || []).forEach(r => { supabaseResults[r.match_id] = r; });
-      const merged = { ...supabaseResults, ...lsResults }; // localStorage overrides (more recent)
-      setRealResultsState(merged);
-      lsSet(LS_RESULTS, merged);
+      // Real results → map by match_id
+      const resultsMap = {};
+      (resultsData || []).forEach(r => { resultsMap[r.match_id] = r; });
+      setRealResults(resultsMap);
 
-      // Merge sessions: Supabase is authoritative for sessions that exist there,
-      // but keep any localStorage-only sessions too
-      const sbSessionIds = new Set((sessionsData || []).map(s => s.session_id));
-      const lsOnlySessions = lsSessions.filter(s => !sbSessionIds.has(s.session_id));
-      const mergedSessions = [...(sessionsData || []), ...lsOnlySessions];
-      setSessionsState(mergedSessions);
-      lsSet(LS_SESSIONS, mergedSessions);
-
-      setUseFallback(false);
+      // Sessions
+      setSessions(sessionsData || []);
     } catch (err) {
-      console.warn("Supabase offline, using localStorage:", err.message);
-      setUseFallback(true);
+      console.error("Supabase initApp error:", err);
+      // Graceful degradation — show teams from defaults
+      setTeams(DEFAULT_TEAMS);
+      setMatches(generateAllGroupMatches(DEFAULT_TEAMS));
     }
-
     setLoading(false);
   }
 
@@ -138,6 +90,7 @@ export default function App() {
     return allMatches;
   }
 
+  // ── Palpites ─────────────────────────────────────────────────
   function handleStartPredictor(name) {
     const sid = `${name.trim().replace(/\s+/g, "_")}_${Date.now()}`;
     setPredictorName(name.trim());
@@ -146,40 +99,83 @@ export default function App() {
   }
 
   async function handleSavePredictions(preds) {
-    setPredictions(preds);
-    const sessionPayload = { session_id: sessionId, name: predictorName, is_complete: true, score: 0 };
-    const predPayload = preds.map(p => ({ ...p, session_id: sessionId, predictor_name: predictorName }));
+    const sessionPayload = {
+      session_id: sessionId,
+      name: predictorName,
+      is_complete: true,
+      score: 0,
+      updated_at: new Date().toISOString(),
+    };
+    const predPayload = preds.map(p => ({
+      ...p,
+      session_id: sessionId,
+      predictor_name: predictorName,
+    }));
 
-    // Save to localStorage first (always)
-    const existingPreds = lsGet(LS_PREDS, []);
-    lsSet(LS_PREDS, [...existingPreds.filter(p => p.session_id !== sessionId), ...predPayload]);
-    setSessions(prev => {
-      const f = prev.filter(s => s.session_id !== sessionId);
-      return [...f, sessionPayload];
-    });
-
-    // Try Supabase
-    if (!useFallback) {
-      try {
-        await upsertPredictorSession(sessionPayload);
-        await upsertPredictions(predPayload);
-      } catch (err) { console.warn("Supabase save failed:", err.message); }
+    try {
+      await upsertPredictorSession(sessionPayload);
+      await upsertPredictions(predPayload);
+      // Refresh sessions list
+      const updated = await getPredictorSessions();
+      setSessions(updated || []);
+    } catch (err) {
+      console.error("handleSavePredictions error:", err);
+      alert("Erro ao salvar palpites: " + err.message);
+      return;
     }
     setPage("leaderboard");
   }
 
+  // ── Resultados reais ─────────────────────────────────────────
+  async function saveRealResults(resultsArray) {
+    await upsertRealResults(resultsArray);
+    // Reload from Supabase to keep state consistent
+    const fresh = await getRealResults();
+    const map = {};
+    (fresh || []).forEach(r => { map[r.match_id] = r; });
+    setRealResults(map);
+  }
+
+  async function clearRealResults() {
+    await deleteAllRealResults();
+    setRealResults({});
+  }
+
+  // ── Sessões (admin) ──────────────────────────────────────────
+  async function deleteSessionById(sid) {
+    await sbDeleteSession(sid); // deletes predictions + session in Supabase
+    setSessions(prev => prev.filter(s => s.session_id !== sid));
+  }
+
+  async function saveSessionPredictions(sid, name, predArray) {
+    const payload = predArray.map(p => ({ ...p, session_id: sid, predictor_name: name }));
+    await deletePredictionsForSession(sid);
+    await upsertPredictions(payload);
+  }
+
+  async function refreshSessions() {
+    const data = await getPredictorSessions();
+    setSessions(data || []);
+  }
+
+  // ── Admin auth ───────────────────────────────────────────────
   function checkAdmin(secret) {
     if (secret === ADMIN_SECRET) { setIsAdmin(true); setPage("admin"); return true; }
     return false;
   }
 
+  // ── Helpers ──────────────────────────────────────────────────
   function getTeamById(id) { return teams.find(t => t.id === id); }
-  function getGroupTeams(group) {
-    return teams.filter(t => (t.group || t.group_letter) === group)
+  function getGroupTeams(grp) {
+    return teams.filter(t => (t.group || t.group_letter) === grp)
       .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
   }
-  function getGroupMatches(group) {
-    return matches.filter(m => m.phase === "group" && m.group_letter === group);
+  function getGroupMatches(grp) {
+    return matches.filter(m => m.phase === "group" && m.group_letter === grp);
+  }
+  function nameExists(name) {
+    const norm = name.trim().toLowerCase();
+    return sessions.some(s => s.name.trim().toLowerCase() === norm);
   }
 
   const ctx = {
@@ -188,15 +184,19 @@ export default function App() {
     teams, setTeams,
     matches, setMatches,
     realResults, setRealResults,
-    predictions, setPredictions,
     sessions, setSessions,
     isAdmin, setIsAdmin,
-    useFallback,
     handleStartPredictor,
     handleSavePredictions,
+    saveRealResults,
+    clearRealResults,
+    deleteSessionById,
+    saveSessionPredictions,
+    refreshSessions,
     checkAdmin,
     getTeamById, getGroupTeams, getGroupMatches,
     generateAllGroupMatches,
+    nameExists,
     initApp,
   };
 
@@ -216,12 +216,12 @@ export default function App() {
   return (
     <AppContext.Provider value={ctx}>
       <div>
-        {page === "home"            && <HomePage />}
-        {page === "predict"         && <PredictorPage />}
-        {page === "leaderboard"     && <LeaderboardPage />}
+        {page === "home"             && <HomePage />}
+        {page === "predict"          && <PredictorPage />}
+        {page === "leaderboard"      && <LeaderboardPage />}
         {page === "admin" && isAdmin && <AdminPage />}
-        {page === "viewpredictions" && <ViewPredictionsPage />}
-        {page === "explorer"        && <ThirdPlaceExplorerPage />}
+        {page === "viewpredictions"  && <ViewPredictionsPage />}
+        {page === "explorer"         && <ThirdPlaceExplorerPage />}
       </div>
     </AppContext.Provider>
   );
