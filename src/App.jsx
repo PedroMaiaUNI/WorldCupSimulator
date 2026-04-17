@@ -20,9 +20,19 @@ export const useApp = () => useContext(AppContext);
 const ADMIN_SECRET = import.meta.env.VITE_ADMIN_SECRET || "copa2026admin";
 
 export default function App() {
-  const [page,          setPage]          = useState("home");
-  const [predictorName, setPredictorName] = useState("");
-  const [sessionId,     setSessionId]     = useState(null);
+  // Restaurar sessão do tab (sessionStorage = só dura enquanto a aba estiver aberta)
+  const _storedPage    = sessionStorage.getItem("wc2026_page")    || "home";
+  const _storedName    = sessionStorage.getItem("wc2026_name")    || "";
+  const _storedSid     = sessionStorage.getItem("wc2026_sid")     || null;
+
+  const [page,          setPageState]     = useState(_storedPage);
+  const [predictorName, setPredictorName] = useState(_storedName);
+  const [sessionId,     setSessionId]     = useState(_storedSid);
+
+  function setPage(p) {
+    setPageState(p);
+    sessionStorage.setItem("wc2026_page", p);
+  }
   const [teams,         setTeams]         = useState([]);
   const [matches,       setMatches]       = useState([]);
   const [realResults,   setRealResults]   = useState({});  // { matchId: resultObj }
@@ -95,6 +105,8 @@ export default function App() {
     const sid = `${name.trim().replace(/\s+/g, "_")}_${Date.now()}`;
     setPredictorName(name.trim());
     setSessionId(sid);
+    sessionStorage.setItem("wc2026_name", name.trim());
+    sessionStorage.setItem("wc2026_sid",  sid);
     setPage("predict");
   }
 
@@ -123,7 +135,8 @@ export default function App() {
       alert("Erro ao salvar palpites: " + err.message);
       return;
     }
-    setPage("leaderboard");
+    sessionStorage.setItem("wc2026_page", "leaderboard");
+    setPageState("leaderboard");
   }
 
   // ── Resultados reais ─────────────────────────────────────────

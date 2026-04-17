@@ -1,11 +1,36 @@
 import { useState, useEffect } from "react";
 import { useApp } from "../App";
-import TeamBadge from "./TeamBadge";
 
 function parseGoals(raw) {
   if (raw === "" || raw == null) return null;
   const n = Math.floor(Number(raw));
   return (!isNaN(n) && n >= 0) ? n : null;
+}
+
+function TeamBlock({ team, reverse, isWinner }) {
+  return (
+    <div style={{
+      display:"flex", flexDirection:"column",
+      alignItems: reverse ? "flex-end" : "flex-start",
+      minWidth: 0, overflow:"hidden", flex:1,
+    }}>
+      <span style={{ fontSize:"1.5rem", lineHeight:1 }}>{team?.flag ?? "🏳️"}</span>
+      <span style={{
+        color: isWinner ? "#10b981" : "#fff",
+        fontSize:"0.78rem", fontFamily:"Arial,sans-serif", fontWeight:500,
+        marginTop:"0.15rem",
+        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+        maxWidth:"100%", textAlign: reverse ? "right" : "left",
+      }}>
+        {team?.name ?? "TBD"}
+      </span>
+      {isWinner && (
+        <span style={{ fontSize:"0.6rem", color:"#10b981", fontFamily:"Arial,sans-serif", letterSpacing:"0.05em", marginTop:"0.1rem" }}>
+          ✓ AVANÇA
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default function KnockoutMatchCard({ match, prediction, onUpdate }) {
@@ -21,8 +46,10 @@ export default function KnockoutMatchCard({ match, prediction, onUpdate }) {
 
   if (!match.home || !match.away) {
     return (
-      <div style={S.card}>
-        <div style={S.placeholder}>A definir (aguardando resultados anteriores)</div>
+      <div style={{ borderRadius:"10px", border:"1px solid rgba(255,255,255,0.06)", padding:"1rem", marginBottom:"0.75rem", background:"rgba(255,255,255,0.02)" }}>
+        <p style={{ textAlign:"center", color:"rgba(255,255,255,0.3)", fontFamily:"Arial,sans-serif", fontSize:"0.85rem", margin:0 }}>
+          A definir — aguardando fases anteriores
+        </p>
       </div>
     );
   }
@@ -43,7 +70,7 @@ export default function KnockoutMatchCard({ match, prediction, onUpdate }) {
   const et = prediction.extra_time;
   const pens = prediction.penalties;
   const pw = prediction.penalty_winner;
-  const isDrawInRegulation = hg != null && ag != null && hg === ag;
+  const isDrawReg = hg != null && ag != null && hg === ag;
 
   let winner = null;
   if (hg != null && ag != null) {
@@ -52,96 +79,75 @@ export default function KnockoutMatchCard({ match, prediction, onUpdate }) {
     else if (pens && pw) winner = pw;
   }
 
+  const inputStyle = (val) => ({
+    width:"48px", height:"48px", textAlign:"center",
+    background:"rgba(0,0,0,0.4)",
+    border:`2px solid ${val != null ? "rgba(240,192,64,0.5)" : "rgba(255,255,255,0.15)"}`,
+    borderRadius:"8px", color:"#fff", fontSize:"1.4rem",
+    fontFamily:"'Bebas Neue','Impact',sans-serif", outline:"none", flexShrink:0,
+  });
+
   return (
-    <div style={{ ...S.card, borderColor: winner ? "rgba(240,192,64,0.25)" : "rgba(255,255,255,0.08)" }}>
-      <div style={S.teams}>
-        <div style={S.teamSide}>
-          <TeamBadge team={homeTeam} />
-          {winner === "home" && <span style={S.winnerBadge}>✓ AVANÇA</span>}
-        </div>
-        <div style={S.scoreArea}>
-          <input
-            style={{ ...S.scoreInput, borderColor: hg != null ? "rgba(240,192,64,0.5)" : "rgba(255,255,255,0.15)" }}
-            type="text" inputMode="numeric" pattern="[0-9]*"
-            value={homeVal}
-            onChange={e => handleChange("home", e.target.value)}
+    <div style={{ borderRadius:"10px", border:`1px solid ${winner ? "rgba(240,192,64,0.25)" : "rgba(255,255,255,0.08)"}`, padding:"0.85rem", marginBottom:"0.75rem", background:"rgba(255,255,255,0.03)" }}>
+      {/* Teams + score */}
+      <div style={{ display:"flex", alignItems:"center", gap:"0.5rem" }}>
+        <TeamBlock team={homeTeam} isWinner={winner === "home"} />
+        <div style={{ display:"flex", alignItems:"center", gap:"0.4rem", flexShrink:0 }}>
+          <input style={inputStyle(hg)} type="text" inputMode="numeric" pattern="[0-9]*"
+            value={homeVal} onChange={e => handleChange("home", e.target.value)}
             onBlur={e => commit("home", e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") commit("home", homeVal); }}
-            placeholder="–" maxLength={2}
-          />
-          <span style={S.vs}>×</span>
-          <input
-            style={{ ...S.scoreInput, borderColor: ag != null ? "rgba(240,192,64,0.5)" : "rgba(255,255,255,0.15)" }}
-            type="text" inputMode="numeric" pattern="[0-9]*"
-            value={awayVal}
-            onChange={e => handleChange("away", e.target.value)}
+            onKeyDown={e => e.key === "Enter" && commit("home", homeVal)}
+            placeholder="–" maxLength={2} />
+          <span style={{ color:"rgba(255,255,255,0.3)", fontSize:"0.9rem", fontFamily:"Arial,sans-serif", flexShrink:0 }}>×</span>
+          <input style={inputStyle(ag)} type="text" inputMode="numeric" pattern="[0-9]*"
+            value={awayVal} onChange={e => handleChange("away", e.target.value)}
             onBlur={e => commit("away", e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter") commit("away", awayVal); }}
-            placeholder="–" maxLength={2}
-          />
+            onKeyDown={e => e.key === "Enter" && commit("away", awayVal)}
+            placeholder="–" maxLength={2} />
         </div>
-        <div style={{ ...S.teamSide, alignItems: "flex-end" }}>
-          <TeamBadge team={awayTeam} reverse />
-          {winner === "away" && <span style={S.winnerBadge}>✓ AVANÇA</span>}
-        </div>
+        <TeamBlock team={awayTeam} reverse isWinner={winner === "away"} />
       </div>
 
-      <div style={S.extras}>
-        <label style={S.checkLabel}>
+      {/* Extra time / penalties */}
+      <div style={{ display:"flex", gap:"1.25rem", marginTop:"0.65rem", paddingTop:"0.65rem", borderTop:"1px solid rgba(255,255,255,0.06)" }}>
+        <label style={{ display:"flex", alignItems:"center", gap:"0.35rem", cursor:"pointer", color:"rgba(255,255,255,0.6)", fontSize:"0.8rem", fontFamily:"Arial,sans-serif" }}>
           <input type="checkbox" checked={!!et} style={{ accentColor:"#f0c040" }}
-            onChange={e => { onUpdate({ extra_time: e.target.checked, penalties: e.target.checked ? pens : false, penalty_winner: e.target.checked ? pw : null }); }} />
+            onChange={e => onUpdate({ extra_time:e.target.checked, penalties:e.target.checked?pens:false, penalty_winner:e.target.checked?pw:null })} />
           Prorrogação
         </label>
         {et && (
-          <label style={S.checkLabel}>
+          <label style={{ display:"flex", alignItems:"center", gap:"0.35rem", cursor:"pointer", color:"rgba(255,255,255,0.6)", fontSize:"0.8rem", fontFamily:"Arial,sans-serif" }}>
             <input type="checkbox" checked={!!pens} style={{ accentColor:"#f0c040" }}
-              onChange={e => { onUpdate({ penalties: e.target.checked, penalty_winner: e.target.checked ? pw : null }); }} />
+              onChange={e => onUpdate({ penalties:e.target.checked, penalty_winner:e.target.checked?pw:null })} />
             Pênaltis
           </label>
         )}
       </div>
 
-      {isDrawInRegulation && pens && (
-        <div style={S.penaltySection}>
-          <p style={S.penaltyLabel}>Vencedor nos pênaltis:</p>
-          <div style={S.penaltyBtns}>
-            <button style={{ ...S.penaltyBtn, ...(pw === "home" ? S.penaltyBtnActive : {}) }} onClick={() => onUpdate({ penalty_winner:"home" })}>
+      {/* Penalty winner */}
+      {isDrawReg && pens && (
+        <div style={{ marginTop:"0.65rem" }}>
+          <p style={{ color:"rgba(255,255,255,0.5)", fontSize:"0.75rem", fontFamily:"Arial,sans-serif", marginBottom:"0.4rem" }}>
+            Vencedor nos pênaltis:
+          </p>
+          <div style={{ display:"flex", gap:"0.6rem" }}>
+            <button style={{ flex:1, padding:"0.55rem 0.4rem", background: pw==="home"?"rgba(240,192,64,0.2)":"rgba(255,255,255,0.05)", border:`1px solid ${pw==="home"?"#f0c040":"rgba(255,255,255,0.12)"}`, borderRadius:"8px", color: pw==="home"?"#f0c040":"rgba(255,255,255,0.7)", cursor:"pointer", fontSize:"0.82rem", fontFamily:"Arial,sans-serif", minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}
+              onClick={() => onUpdate({ penalty_winner:"home" })}>
               {homeTeam?.flag} {homeTeam?.name}
             </button>
-            <button style={{ ...S.penaltyBtn, ...(pw === "away" ? S.penaltyBtnActive : {}) }} onClick={() => onUpdate({ penalty_winner:"away" })}>
+            <button style={{ flex:1, padding:"0.55rem 0.4rem", background: pw==="away"?"rgba(240,192,64,0.2)":"rgba(255,255,255,0.05)", border:`1px solid ${pw==="away"?"#f0c040":"rgba(255,255,255,0.12)"}`, borderRadius:"8px", color: pw==="away"?"#f0c040":"rgba(255,255,255,0.7)", cursor:"pointer", fontSize:"0.82rem", fontFamily:"Arial,sans-serif", minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}
+              onClick={() => onUpdate({ penalty_winner:"away" })}>
               {awayTeam?.flag} {awayTeam?.name}
             </button>
           </div>
         </div>
       )}
 
-      {isDrawInRegulation && !pens && (
-        <div style={S.drawWarning}>⚠ Empate no mata-mata: marque prorrogação e, se necessário, pênaltis</div>
+      {isDrawReg && !pens && (
+        <p style={{ marginTop:"0.65rem", color:"rgba(255,150,50,0.85)", fontSize:"0.75rem", fontFamily:"Arial,sans-serif", textAlign:"center", margin:"0.65rem 0 0" }}>
+          ⚠ Empate no mata-mata — marque prorrogação e, se necessário, pênaltis
+        </p>
       )}
     </div>
   );
 }
-
-const S = {
-  card: { borderRadius:"10px", border:"1px solid rgba(255,255,255,0.08)", padding:"1rem", marginBottom:"0.75rem", background:"rgba(255,255,255,0.03)", transition:"border-color 0.2s" },
-  placeholder: { textAlign:"center", color:"rgba(255,255,255,0.3)", fontFamily:"Arial,sans-serif", fontSize:"0.85rem", padding:"1rem" },
-  teams: { display:"flex", alignItems:"center", gap:"0.75rem" },
-  teamSide: { flex:1, display:"flex", flexDirection:"column", alignItems:"flex-start", gap:"0.25rem" },
-  scoreArea: { display:"flex", alignItems:"center", gap:"0.5rem", flexShrink:0 },
-  scoreInput: {
-    width:"52px", height:"52px", textAlign:"center",
-    background:"rgba(0,0,0,0.4)", border:"2px solid rgba(255,255,255,0.15)",
-    borderRadius:"8px", color:"#ffffff", fontSize:"1.5rem",
-    fontFamily:"'Bebas Neue','Impact',sans-serif", outline:"none",
-  },
-  vs: { color:"rgba(255,255,255,0.3)", fontSize:"1rem", fontFamily:"Arial,sans-serif" },
-  winnerBadge: { fontSize:"0.65rem", color:"#10b981", fontFamily:"Arial,sans-serif", letterSpacing:"0.05em" },
-  extras: { display:"flex", gap:"1.5rem", marginTop:"0.75rem", paddingTop:"0.75rem", borderTop:"1px solid rgba(255,255,255,0.06)" },
-  checkLabel: { display:"flex", alignItems:"center", gap:"0.4rem", cursor:"pointer", color:"rgba(255,255,255,0.6)", fontSize:"0.8rem", fontFamily:"Arial,sans-serif" },
-  penaltySection: { marginTop:"0.75rem", paddingTop:"0.75rem", borderTop:"1px solid rgba(255,255,255,0.06)" },
-  penaltyLabel: { color:"rgba(255,255,255,0.5)", fontSize:"0.75rem", fontFamily:"Arial,sans-serif", marginBottom:"0.5rem", letterSpacing:"0.05em" },
-  penaltyBtns: { display:"flex", gap:"0.75rem" },
-  penaltyBtn: { flex:1, padding:"0.6rem", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.15)", borderRadius:"8px", color:"rgba(255,255,255,0.7)", cursor:"pointer", fontSize:"0.85rem", fontFamily:"Arial,sans-serif" },
-  penaltyBtnActive: { background:"rgba(240,192,64,0.2)", borderColor:"#f0c040", color:"#f0c040" },
-  drawWarning: { marginTop:"0.75rem", color:"rgba(255,150,50,0.8)", fontSize:"0.75rem", fontFamily:"Arial,sans-serif", textAlign:"center" },
-};
