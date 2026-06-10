@@ -106,11 +106,22 @@ export async function getPredictions(sessionId) {
 }
 
 export async function getAllPredictions() {
-  const { data, error } = await supabase
-    .from('predictions')
-    .select('*');
-  if (error) throw error;
-  return data;
+  // Supabase limita 1000 linhas por request — paginar para buscar tudo
+  const PAGE = 1000;
+  let all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('predictions')
+      .select('*')
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    all = all.concat(data);
+    if (data.length < PAGE) break; // última página
+    from += PAGE;
+  }
+  return all;
 }
 
 export async function upsertPrediction(prediction) {
