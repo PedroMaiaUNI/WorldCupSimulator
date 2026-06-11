@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useApp } from "../App";
 
 export default function HomePage() {
-  const { handleStartPredictor, setPage, checkAdmin, nameExists } = useApp();
+  const { handleStartPredictor, setPage, checkAdmin, nameExists, palpitesAbertos } = useApp();
   const [name, setName] = useState("");
   const [adminInput, setAdminInput] = useState("");
   const [adminMode, setAdminMode] = useState(false);
@@ -10,6 +10,7 @@ export default function HomePage() {
   const [nameError, setNameError] = useState("");
 
   function handleStart() {
+    if (!palpitesAbertos) return;
     if (!name.trim()) { setNameError("Digite seu nome para continuar!"); return; }
     if (name.trim().length < 2) { setNameError("Nome muito curto."); return; }
     if (nameExists(name)) { setNameError(`O nome "${name.trim()}" já foi usado. Escolha outro.`); return; }
@@ -35,14 +36,38 @@ export default function HomePage() {
 
       <main style={S.card}>
         <div style={S.cardInner}>
+
+          {/* Banner de encerramento — visível apenas quando fechado */}
+          {!palpitesAbertos && (
+            <div style={S.closedBanner}>
+              <span style={S.closedIcon}>🔒</span>
+              <div>
+                <p style={S.closedTitle}>PALPITES ENCERRADOS</p>
+                <p style={S.closedSub}>A fase de palpites foi encerrada pelo administrador.</p>
+              </div>
+            </div>
+          )}
+
           <p style={S.cardLabel}>SEU NOME DE PALPITEIRO</p>
-          <input style={S.input} type="text" placeholder="Ex: Zé do Futebol" value={name}
+          <input
+            style={{ ...S.input, ...(palpitesAbertos ? {} : S.inputDisabled) }}
+            type="text" placeholder="Ex: Zé do Futebol" value={name}
+            disabled={!palpitesAbertos}
             onChange={e => { setName(e.target.value); setNameError(""); }}
-            onKeyDown={e => e.key === "Enter" && handleStart()} maxLength={30} />
+            onKeyDown={e => e.key === "Enter" && handleStart()}
+            maxLength={30}
+          />
           {nameError && <p style={S.error}>{nameError}</p>}
-          <button style={S.startBtn} onClick={handleStart}>
-            <span>⚽</span> FAZER PALPITES
+
+          <button
+            style={{ ...S.startBtn, ...(palpitesAbertos ? {} : S.startBtnDisabled) }}
+            onClick={handleStart}
+            disabled={!palpitesAbertos}
+          >
+            <span>{palpitesAbertos ? "⚽" : "🔒"}</span>
+            {palpitesAbertos ? "FAZER PALPITES" : "PALPITES ENCERRADOS"}
           </button>
+
           <div style={S.divider}>
             <span style={S.dividerLine} /><span style={S.dividerText}>ou</span><span style={S.dividerLine} />
           </div>
@@ -88,10 +113,16 @@ const S = {
   hosted: { color:"rgba(255,255,255,0.4)", fontSize:"0.8rem", letterSpacing:"0.3em", fontFamily:"Arial,sans-serif", margin:0 },
   card: { width:"100%", maxWidth:"480px", background:"rgba(255,255,255,0.04)", border:"1px solid rgba(240,192,64,0.2)", borderRadius:"16px", backdropFilter:"blur(20px)", boxShadow:"0 20px 60px rgba(0,0,0,0.5)", position:"relative", zIndex:1 },
   cardInner: { padding:"2.5rem 2rem" },
+  closedBanner: { display:"flex", alignItems:"center", gap:"0.75rem", background:"rgba(239,68,68,0.12)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:"10px", padding:"0.85rem 1rem", marginBottom:"1.25rem" },
+  closedIcon: { fontSize:"1.5rem", flexShrink:0 },
+  closedTitle: { color:"#f87171", fontSize:"0.95rem", letterSpacing:"0.1em", margin:"0 0 0.15rem", fontFamily:"'Bebas Neue',sans-serif" },
+  closedSub: { color:"rgba(255,255,255,0.5)", fontSize:"0.75rem", fontFamily:"Arial,sans-serif", margin:0 },
   cardLabel: { color:"rgba(240,192,64,0.8)", fontSize:"0.75rem", letterSpacing:"0.2em", textAlign:"center", marginBottom:"1rem", fontFamily:"Arial,sans-serif" },
   input: { width:"100%", padding:"1rem 1.25rem", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(240,192,64,0.3)", borderRadius:"10px", color:"#fff", fontSize:"1.1rem", fontFamily:"Arial,sans-serif", outline:"none", boxSizing:"border-box", marginBottom:"0.5rem" },
+  inputDisabled: { opacity:0.35, cursor:"not-allowed" },
   error: { color:"#ff6b6b", fontSize:"0.8rem", fontFamily:"Arial,sans-serif", margin:"0.25rem 0 0.75rem", textAlign:"center" },
   startBtn: { width:"100%", padding:"1rem", background:"linear-gradient(135deg,#f0c040,#e6a800)", border:"none", borderRadius:"10px", color:"#0a0f1e", fontSize:"1.4rem", letterSpacing:"0.15em", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:"0.5rem", marginTop:"1rem", fontFamily:"'Bebas Neue','Impact',sans-serif", boxShadow:"0 4px 20px rgba(240,192,64,0.3)" },
+  startBtnDisabled: { background:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.3)", boxShadow:"none", cursor:"not-allowed" },
   divider: { display:"flex", alignItems:"center", gap:"1rem", margin:"1.5rem 0" },
   dividerLine: { flex:1, height:"1px", background:"rgba(255,255,255,0.1)" },
   dividerText: { color:"rgba(255,255,255,0.3)", fontSize:"0.8rem", fontFamily:"Arial,sans-serif" },

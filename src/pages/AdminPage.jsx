@@ -590,10 +590,60 @@ function PalpitesTab({ showToast }) {
 
 // ── CONFIG ────────────────────────────────────────────────────
 function ConfigTab({ showToast }) {
-  const { initApp, setPage } = useApp();
+  const { initApp, setPage, palpitesAbertos, setPalpitesAbertos } = useApp();
+  const [toggling, setToggling] = useState(false);
+
+  async function handleToggle() {
+    setToggling(true);
+    const novo = !palpitesAbertos;
+    try {
+      await setAppConfig('palpites_abertos', String(novo));
+      setPalpitesAbertos(novo);
+      showToast(novo ? "✅ Palpites ABERTOS!" : "🔒 Palpites FECHADOS!");
+    } catch (err) {
+      showToast("Erro: " + err.message);
+    }
+    setToggling(false);
+  }
+
   return (
     <div>
       <p style={S.sectionTitle}>CONFIGURAÇÕES</p>
+
+      {/* Toggle principal */}
+      <div style={{ ...S.configCard, borderColor: palpitesAbertos ? "rgba(16,185,129,0.4)" : "rgba(239,68,68,0.4)" }}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:"1rem" }}>
+          <div>
+            <p style={{ ...S.configLabel, marginBottom:"0.25rem" }}>RECEBIMENTO DE PALPITES</p>
+            <p style={{ fontFamily:"Arial,sans-serif", fontSize:"0.82rem", margin:0,
+              color: palpitesAbertos ? "#10b981" : "#f87171" }}>
+              {palpitesAbertos ? "✅ Aberto — qualquer pessoa pode palpitar" : "🔒 Fechado — botão desabilitado para todos"}
+            </p>
+          </div>
+          {/* Toggle switch */}
+          <button
+            onClick={handleToggle}
+            disabled={toggling}
+            style={{
+              position:"relative", width:"58px", height:"30px", borderRadius:"15px", border:"none",
+              background: palpitesAbertos ? "#10b981" : "rgba(255,255,255,0.15)",
+              cursor: toggling ? "not-allowed" : "pointer",
+              transition:"background 0.25s", flexShrink:0,
+              opacity: toggling ? 0.6 : 1,
+            }}
+          >
+            <span style={{
+              position:"absolute", top:"3px",
+              left: palpitesAbertos ? "31px" : "3px",
+              width:"24px", height:"24px", borderRadius:"50%",
+              background:"#fff",
+              transition:"left 0.25s",
+              boxShadow:"0 1px 4px rgba(0,0,0,0.3)",
+            }} />
+          </button>
+        </div>
+      </div>
+
       <div style={S.configCard}><p style={S.configLabel}>Explorador de Cruzamentos</p><button style={S.saveBtn} onClick={()=>setPage("explorer")}>🔍 Abrir</button></div>
       <div style={S.configCard}><p style={S.configLabel}>Recarregar dados do Supabase</p><button style={S.saveBtn} onClick={()=>{initApp();showToast("🔄 Recarregado!");}}>🔄 Recarregar</button></div>
     </div>
