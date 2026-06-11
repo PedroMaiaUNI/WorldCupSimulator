@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useApp } from "../App";
 import { GROUPS } from "../lib/teamsData";
-import { upsertTeam, deleteTeam, getAllPredictions, upsertPredictions, upsertPredictorSession } from "../lib/supabase";
+import { upsertTeam, deleteTeam, getAllPredictions, upsertPredictions, upsertPredictorSession, setAppConfig } from "../lib/supabase";
 import { calcGroupStandings, getKnockoutWinnerSide, getMatchPhase } from "../lib/scoring";
 import { buildBracket, generateRandomResults, generateRandomPredictions } from "../lib/bracket";
 import TeamBadge from "../components/TeamBadge";
@@ -590,16 +590,14 @@ function PalpitesTab({ showToast }) {
 
 // ── CONFIG ────────────────────────────────────────────────────
 function ConfigTab({ showToast }) {
-  const { initApp, setPage, palpitesAbertos, setPalpitesAbertos } = useApp();
+  const { initApp, setPage, palpitesAbertos, togglePalpites } = useApp();
   const [toggling, setToggling] = useState(false);
 
   async function handleToggle() {
     setToggling(true);
-    const novo = !palpitesAbertos;
     try {
-      await setAppConfig('palpites_abertos', String(novo));
-      setPalpitesAbertos(novo);
-      showToast(novo ? "✅ Palpites ABERTOS!" : "🔒 Palpites FECHADOS!");
+      await togglePalpites(!palpitesAbertos);
+      showToast(!palpitesAbertos ? "✅ Palpites ABERTOS!" : "🔒 Palpites FECHADOS!");
     } catch (err) {
       showToast("Erro: " + err.message);
     }
