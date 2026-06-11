@@ -590,14 +590,16 @@ function PalpitesTab({ showToast }) {
 
 // ── CONFIG ────────────────────────────────────────────────────
 function ConfigTab({ showToast }) {
-  const { initApp, setPage, palpitesAbertos, togglePalpites } = useApp();
+  const { initApp, setPage, palpitesAbertos, setPalpitesAbertos } = useApp();
   const [toggling, setToggling] = useState(false);
 
   async function handleToggle() {
     setToggling(true);
+    const novo = !palpitesAbertos;
     try {
-      await togglePalpites(!palpitesAbertos);
-      showToast(!palpitesAbertos ? "✅ Palpites ABERTOS!" : "🔒 Palpites FECHADOS!");
+      await setAppConfig('palpites_abertos', String(novo));
+      setPalpitesAbertos(novo);
+      showToast(novo ? "✅ Palpites ABERTOS!" : "🔒 Palpites FECHADOS!");
     } catch (err) {
       showToast("Erro: " + err.message);
     }
