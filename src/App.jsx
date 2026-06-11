@@ -4,7 +4,7 @@ import {
   upsertPredictorSession, upsertPredictions, getAllPredictions,
   deleteSession as sbDeleteSession, deletePredictionsForSession,
   upsertRealResults, deleteAllRealResults,
-  getAppConfig, setAppConfig
+  getAppConfig, setAppConfig,
 } from "./lib/supabase";
 import { DEFAULT_TEAMS, GROUPS } from "./lib/teamsData";
 import { generateGroupMatches } from "./lib/scoring";
@@ -21,26 +21,38 @@ export const useApp = () => useContext(AppContext);
 const ADMIN_SECRET = import.meta.env.VITE_ADMIN_SECRET || "copa2026admin";
 
 export default function App() {
-  const [page,          setPage]          = useState("home");
-  const [predictorName, setPredictorName] = useState("");
-  const [sessionId,     setSessionId]     = useState(null);
-  const [teams,         setTeams]         = useState([]);
-  const [matches,       setMatches]       = useState([]);
-  const [realResults,   setRealResults]   = useState({});  // { matchId: resultObj }
-  const [sessions,      setSessions]      = useState([]);  // predictor_sessions rows
-  const [isAdmin,       setIsAdmin]       = useState(false);
-  const [loading,       setLoading]       = useState(true);
+  // Restaurar sessão do tab (sessionStorage = só dura enquanto a aba estiver aberta)
+  const _storedPage = sessionStorage.getItem("wc2026_page") || "home";
+  const _storedName = sessionStorage.getItem("wc2026_name") || "";
+  const _storedSid  = sessionStorage.getItem("wc2026_sid")  || null;
+
+  const [page,            setPageState]       = useState(_storedPage);
+  const [predictorName,   setPredictorName]   = useState(_storedName);
+  const [sessionId,       setSessionId]       = useState(_storedSid);
+  const [teams,           setTeams]           = useState([]);
+  const [matches,         setMatches]         = useState([]);
+  const [realResults,     setRealResults]     = useState({});
+  const [sessions,        setSessions]        = useState([]);
+  const [isAdmin,         setIsAdmin]         = useState(false);
+  const [palpitesAbertos, setPalpitesAbertos] = useState(true);
+  const [loading,         setLoading]         = useState(true);
+
+  function setPage(p) {
+    setPageState(p);
+    sessionStorage.setItem("wc2026_page", p);
+  }
 
   useEffect(() => { initApp(); }, []);
 
   async function initApp() {
     setLoading(true);
     try {
-      const [teamsData, matchesData, resultsData, sessionsData] = await Promise.all([
+      const [teamsData, matchesData, resultsData, sessionsData, configAbertos] = await Promise.all([
         getTeams(),
         getMatches(),
         getRealResults(),
         getPredictorSessions(),
+        getAppConfig("palpites_abertos"),
       ]);
 
       // Teams
@@ -49,11 +61,9 @@ export default function App() {
           .map(t => ({ ...t, group: t.group || t.group_letter }))
           .sort((a, b) => (a.sort_order ?? 999) - (b.sort_order ?? 999));
         setTeams(normalized);
-        if (matchesData && matchesData.length > 0) {
-          setMatches(matchesData);
-        } else {
-          setMatches(generateAllGroupMatches(normalized));
-        }
+        setMatches(matchesData && matchesData.length > 0
+          ? matchesData
+          : generateAllGroupMatches(normalized));
       } else {
         setTeams(DEFAULT_TEAMS);
         setMatches(generateAllGroupMatches(DEFAULT_TEAMS));
@@ -67,13 +77,11 @@ export default function App() {
       // Sessions
       setSessions(sessionsData || []);
 
-      // Config: palpites abertos?
-      const abertos = await getAppConfig('palpites_abertos');
-      // null = nunca foi definido → considerar aberto
-      setPalpitesAbertos(abertos === null ? true : abertos === 'true' || abertos === true);
+      // Config: palpites abertos? (null = nunca definido → aberto por padrão)
+      setPalpitesAbertos(configAbertos === null ? true : configAbertos === "true" || configAbertos === true);
+
     } catch (err) {
       console.error("Supabase initApp error:", err);
-      // Graceful degradation — show teams from defaults
       setTeams(DEFAULT_TEAMS);
       setMatches(generateAllGroupMatches(DEFAULT_TEAMS));
     }
@@ -96,11 +104,13 @@ export default function App() {
     return allMatches;
   }
 
-  // ── Palpites ─────────────────────────────────────────────────
+  // ── Palpites ──────────────────────────────────────────────────
   function handleStartPredictor(name) {
     const sid = `${name.trim().replace(/\s+/g, "_")}_${Date.now()}`;
     setPredictorName(name.trim());
     setSessionId(sid);
+    sessionStorage.setItem("wc2026_name", name.trim());
+    sessionStorage.setItem("wc2026_sid",  sid);
     setPage("predict");
   }
 
@@ -117,11 +127,9 @@ export default function App() {
       session_id: sessionId,
       predictor_name: predictorName,
     }));
-
     try {
       await upsertPredictorSession(sessionPayload);
       await upsertPredictions(predPayload);
-      // Refresh sessions list
       const updated = await getPredictorSessions();
       setSessions(updated || []);
     } catch (err) {
@@ -129,13 +137,13 @@ export default function App() {
       alert("Erro ao salvar palpites: " + err.message);
       return;
     }
-    setPage("leaderboard");
+    sessionStorage.setItem("wc2026_page", "leaderboard");
+    setPageState("leaderboard");
   }
 
-  // ── Resultados reais ─────────────────────────────────────────
+  // ── Resultados reais ──────────────────────────────────────────
   async function saveRealResults(resultsArray) {
     await upsertRealResults(resultsArray);
-    // Reload from Supabase to keep state consistent
     const fresh = await getRealResults();
     const map = {};
     (fresh || []).forEach(r => { map[r.match_id] = r; });
@@ -147,9 +155,9 @@ export default function App() {
     setRealResults({});
   }
 
-  // ── Sessões (admin) ──────────────────────────────────────────
+  // ── Sessões (admin) ───────────────────────────────────────────
   async function deleteSessionById(sid) {
-    await sbDeleteSession(sid); // deletes predictions + session in Supabase
+    await sbDeleteSession(sid);
     setSessions(prev => prev.filter(s => s.session_id !== sid));
   }
 
@@ -164,13 +172,13 @@ export default function App() {
     setSessions(data || []);
   }
 
-  // ── Admin auth ───────────────────────────────────────────────
+  // ── Admin auth ────────────────────────────────────────────────
   function checkAdmin(secret) {
     if (secret === ADMIN_SECRET) { setIsAdmin(true); setPage("admin"); return true; }
     return false;
   }
 
-  // ── Helpers ──────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────
   function getTeamById(id) { return teams.find(t => t.id === id); }
   function getGroupTeams(grp) {
     return teams.filter(t => (t.group || t.group_letter) === grp)
