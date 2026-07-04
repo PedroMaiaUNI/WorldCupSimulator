@@ -188,7 +188,7 @@ function ResultsTab({ showToast }) {
   }
   function setVal(matchId, field, v) { setLocalVals(prev=>({...prev,[matchId]:{...prev[matchId],[field]:v}})); }
 
-  async function commitMatch(matchId, homeId, awayId, isKO) {
+  async function commitMatch(matchId, homeId, awayId, isKO, koOverride={}) {
     const loc=localVals[matchId]||{}, prev=realResults[matchId]||{};
     const hgRaw=loc.home!==undefined?loc.home:prev.home_goals;
     const agRaw=loc.away!==undefined?loc.away:prev.away_goals;
@@ -197,9 +197,13 @@ function ResultsTab({ showToast }) {
     if(hg==null||isNaN(hg)||ag==null||isNaN(ag)) return;
     const result={match_id:matchId,home_team_id:homeId,away_team_id:awayId,home_goals:hg,away_goals:ag};
     if(isKO){
-      result.extra_time=!!(loc.extra_time??prev.extra_time);
-      result.penalties=!!(loc.penalties??prev.penalties);
-      result.penalty_winner=loc.penalty_winner??prev.penalty_winner??null;
+      // koOverride allows penalty_winner (and other KO fields) to be passed
+      // directly from the click handler, bypassing the React state timing issue
+      result.extra_time=!!(koOverride.extra_time??loc.extra_time??prev.extra_time);
+      result.penalties=!!(koOverride.penalties??loc.penalties??prev.penalties);
+      result.penalty_winner=koOverride.penalty_winner!==undefined
+        ? koOverride.penalty_winner
+        : (loc.penalty_winner??prev.penalty_winner??null);
     }
     try {
       await saveRealResults([result]);
@@ -330,7 +334,8 @@ function ResultsTab({ showToast }) {
                 homeLabel={`${ht?.flag||""} ${ht?.name||homeId}`} awayLabel={`${at?.name||awayId} ${at?.flag||""}`}
                 homeVal={getVal(m.id,"home")} awayVal={getVal(m.id,"away")}
                 extraTime={getVal(m.id,"extra_time")} penalties={getVal(m.id,"penalties")} penaltyWinner={getVal(m.id,"penalty_winner")}
-                onChange={(f,v)=>setVal(m.id,f,v)} onBlur={()=>commitMatch(m.id,homeId,awayId,true)} isKO/>;
+                onChange={(f,v)=>setVal(m.id,f,v)} onBlur={()=>commitMatch(m.id,homeId,awayId,true)}
+                onCommitKO={(override)=>commitMatch(m.id,homeId,awayId,true,override)} isKO/>;
             })}
           </>
         );
@@ -371,7 +376,7 @@ function RandomPredictorBox({ fakeName, setFakeName, genLoading, showToast }) {
   );
 }
 
-function ResultRow({ matchId, homeId, awayId, homeLabel, awayLabel, homeVal, awayVal, extraTime, penalties, penaltyWinner, onChange, onBlur, isKO }) {
+function ResultRow({ matchId, homeId, awayId, homeLabel, awayLabel, homeVal, awayVal, extraTime, penalties, penaltyWinner, onChange, onBlur, onCommitKO, isKO }) {
   function handleInput(side, raw) { onChange(side, raw.replace(/[^0-9]/g,"")); }
   const filled = homeVal!==""&&awayVal!=="";
   const hg=filled?Number(homeVal):null, ag=filled?Number(awayVal):null, isDraw=filled&&hg===ag;
@@ -390,13 +395,13 @@ function ResultRow({ matchId, homeId, awayId, homeLabel, awayLabel, homeVal, awa
       </div>
       {isKO&&filled&&(
         <div style={S.koExtras}>
-          <label style={S.koCheckLabel}><input type="checkbox" style={{accentColor:"#f0c040"}} checked={!!extraTime} onChange={e=>{onChange("extra_time",e.target.checked);if(!e.target.checked){onChange("penalties",false);onChange("penalty_winner",null);}setTimeout(onBlur,0);}}/> Prorrogação</label>
-          {extraTime&&<label style={S.koCheckLabel}><input type="checkbox" style={{accentColor:"#f0c040"}} checked={!!penalties} onChange={e=>{onChange("penalties",e.target.checked);if(!e.target.checked)onChange("penalty_winner",null);setTimeout(onBlur,0);}}/> Pênaltis</label>}
+          <label style={S.koCheckLabel}><input type="checkbox" style={{accentColor:"#f0c040"}} checked={!!extraTime} onChange={e=>{const v=e.target.checked;onChange("extra_time",v);if(!v){onChange("penalties",false);onChange("penalty_winner",null);}(onCommitKO||onBlur)({extra_time:v,penalties:v?penalties:false,penalty_winner:v?penaltyWinner:null});}}/> Prorrogação</label>
+          {extraTime&&<label style={S.koCheckLabel}><input type="checkbox" style={{accentColor:"#f0c040"}} checked={!!penalties} onChange={e=>{const v=e.target.checked;onChange("penalties",v);if(!v)onChange("penalty_winner",null);(onCommitKO||onBlur)({extra_time:extraTime,penalties:v,penalty_winner:v?penaltyWinner:null});}}/> Pênaltis</label>}
           {isDraw&&penalties&&(
             <div style={S.penRow}>
               <span style={S.penLabel}>Vencedor:</span>
-              <button style={{...S.penBtn,...(penaltyWinner==="home"?S.penBtnActive:{})}} onClick={()=>{onChange("penalty_winner","home");setTimeout(onBlur,0);}}>{homeLabel.slice(0,18)}</button>
-              <button style={{...S.penBtn,...(penaltyWinner==="away"?S.penBtnActive:{})}} onClick={()=>{onChange("penalty_winner","away");setTimeout(onBlur,0);}}>{awayLabel.slice(-18)}</button>
+              <button style={{...S.penBtn,...(penaltyWinner==="home"?S.penBtnActive:{})}} onClick={()=>{onChange("penalty_winner","home");(onCommitKO||onBlur)({penalty_winner:"home",extra_time:extraTime,penalties});}}>{homeLabel.slice(0,18)}</button>
+              <button style={{...S.penBtn,...(penaltyWinner==="away"?S.penBtnActive:{})}} onClick={()=>{onChange("penalty_winner","away");(onCommitKO||onBlur)({penalty_winner:"away",extra_time:extraTime,penalties});}}>{awayLabel.slice(-18)}</button>
             </div>
           )}
           {isDraw&&!penalties&&<span style={{color:"rgba(255,150,50,0.7)",fontSize:"0.7rem",fontFamily:"Arial"}}>⚠ Marque prorrogação/pênaltis</span>}
